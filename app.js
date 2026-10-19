@@ -5,6 +5,8 @@ const category = p => p.id === 'kit' ? 'Kits' : p.id === 'sache' ? 'Sachês' : p
 let city = '', cart = [], filter = 'Todos';
 function product(id) { return PRODUCTS.find(p => p.id === id); }
 function limit(p) { return p.stock || 6; }
+// Preço cheio de um kit promocional: soma dos produtos de "base" no preço da modalidade atual.
+function fullPrice(p) { return p.base.reduce((s, id) => s + price(product(id)), 0); }
 function validate(items) {
   if (!Array.isArray(items)) return [];
   const result = [];
@@ -51,7 +53,7 @@ function setCategory(name) {
 function render() {
   const query = $('search').value.trim().toLocaleLowerCase('pt-BR');
   $('grid').replaceChildren();
-  const display = PRODUCTS.filter(p => !['body100','body250'].includes(p.id))
+  const display = PRODUCTS.filter(p => !p.promo && !['body100','body250'].includes(p.id))
     .filter(p => (filter === 'Todos' || category(p) === filter) && (p.name + ' ' + p.frags.join(' ')).toLocaleLowerCase('pt-BR').includes(query));
   $('noResults').hidden = display.length > 0;
   for (const base of display) {
@@ -88,12 +90,7 @@ function render() {
       article.querySelector('.stock').textContent = n >= limit(p) ? 'Limite desta fragrância no carrinho' : (limit(p) - n) + ' un. para adicionar nesta fragrância';
       article.querySelector('.add').disabled = n >= limit(p);
     }
-    article.querySelector('.add').onclick = () => {
-      const item = cart.find(x => x.id === p.id && x.frag === frag.value);
-      if (item && item.qty >= limit(p)) return;
-      if (item) item.qty++; else cart.push({id:p.id, frag:frag.value, qty:1});
-      save(); renderCart(); update(); toast(p.name + ' adicionado ao carrinho');
-    };
+    article.querySelector('.add').onclick = () => { addItem(p, frag.value); update(); };
     update(); $('grid').append(article);
   }
   $('pricingNote').textContent = city === 'other'
@@ -101,8 +98,43 @@ function render() {
     : 'Valores de entrega local. Para outras cidades, confira os valores pela Shopee no carrinho.';
   const kit = product('kit');
   const saving = ['home','lencois','difusor'].reduce((s, id) => s + price(product(id)), 0) - price(kit);
+  renderPromo();
   $('kitSaving').textContent = money(price(kit)) + ' · Economia de ' + money(saving) + ' nos produtos · ' + mode();
   renderCart();
+}
+function addItem(p, frag) {
+  const item = cart.find(x => x.id === p.id && x.frag === frag);
+  if (item && item.qty >= limit(p)) return;
+  if (item) item.qty++; else cart.push({id:p.id, frag, qty:1});
+  save(); renderCart(); toast(p.name + (p.promo ? ' com 10% OFF' : '') + ' adicionado ao carrinho');
+}
+function renderPromo() {
+  $('promoGrid').replaceChildren();
+  for (const p of PRODUCTS.filter(x => x.promo)) {
+    const article = document.createElement('article'); article.className = 'promoCard';
+    article.innerHTML = '<div class="promoPhoto"><span class="promoBadge">-10%</span></div><div class="promoInfo"><span class="eyebrow"></span><h3></h3><p></p><label>Fragrância<select></select></label><div class="promoBuy"><div><s class="promoFull"></s><strong class="price"></strong><span class="priceMode"></span></div><button class="add">Adicionar com 10% OFF</button></div><span class="stock"></span></div>';
+    for (const image of p.images) {
+      const img = document.createElement('img'); img.loading = 'lazy'; img.src = 'assets/' + image + '.png'; img.alt = product(image)?.name || p.name;
+      article.querySelector('.promoPhoto').append(img);
+    }
+    article.querySelector('.promoPhoto').classList.toggle('isPair', p.images.length > 1);
+    article.querySelector('.eyebrow').textContent = p.size + ' · Mesma fragrância';
+    article.querySelector('h3').textContent = p.name;
+    article.querySelector('.promoInfo > p').textContent = p.desc;
+    const frag = article.querySelector('select'); frag.setAttribute('aria-label', 'Fragrância do ' + p.name);
+    for (const f of p.frags) frag.add(new Option(f, f));
+    function update() {
+      const n = cart.find(x => x.id === p.id && x.frag === frag.value)?.qty || 0;
+      article.querySelector('.promoFull').textContent = 'De ' + money(fullPrice(p));
+      article.querySelector('.price').textContent = money(price(p));
+      article.querySelector('.priceMode').textContent = 'Economia de ' + money(fullPrice(p) - price(p)) + ' · ' + mode();
+      article.querySelector('.stock').textContent = n >= limit(p) ? 'Limite desta fragrância no carrinho' : '';
+      article.querySelector('.add').disabled = n >= limit(p);
+    }
+    frag.onchange = update;
+    article.querySelector('.add').onclick = () => { addItem(p, frag.value); update(); };
+    update(); $('promoGrid').append(article);
+  }
 }
 function renderCart() {
   const subtotal = cart.reduce((s, x) => s + price(product(x.id)) * x.qty, 0);
@@ -119,8 +151,8 @@ function renderCart() {
     const head = document.createElement('div'); head.className = 'itemHead';
     const image = document.createElement('img'); image.src = 'assets/' + p.image + '.png'; image.alt = p.name;
     const info = document.createElement('div'), title = document.createElement('strong'), detail = document.createElement('p');
-    title.textContent = p.name + ' · ' + p.size;
-    detail.textContent = x.frag + ' · ' + money(price(p) * x.qty);
+    title.textContent = p.name + ' · ' + p.size + (p.promo ? ' · 10% OFF' : '');
+    detail.textContent = x.frag + ' · ' + money(price(p) * x.qty) + (p.promo ? ' (de ' + money(fullPrice(p) * x.qty) + ')' : '');
     info.append(title, detail); head.append(image, info); div.append(head);
     const row = document.createElement('div'); row.className = 'quantity';
     for (const [text, delta] of [['−', -1], ['+', 1]]) {
@@ -169,15 +201,17 @@ $('checkout').onclick = () => {
   link.hash = 'pedido=' + encodeURIComponent(btoa(unescape(encodeURIComponent(JSON.stringify({city, cart})))));
   const lines = cart.map(x => {
     const p = product(x.id);
-    return '• ' + x.qty + 'x ' + p.name + ' ' + p.size + ' | ' + x.frag + ' | Unitário: ' + money(price(p)) + ' | Subtotal: ' + money(price(p) * x.qty);
+    return '• ' + x.qty + 'x ' + p.name + ' ' + p.size + (p.promo ? ' (PROMOÇÃO 10% OFF)' : '') + ' | ' + x.frag + ' | Unitário: ' + money(price(p)) + (p.promo ? ' (de ' + money(fullPrice(p)) + ')' : '') + ' | Subtotal: ' + money(price(p) * x.qty);
   });
-  const msg = 'Olá, Camila! Meu nome é ' + name + '. Montei este pedido na TBC:\n\n' + lines.join('\n') +
+  const promoNote = cart.some(x => product(x.id).promo) ? '\n\nPedido com 10% de desconto da promoção do site nos kits marcados.' : '';
+  const msg = 'Olá, Camila! Meu nome é ' + name + '. Montei este pedido na TBC:\n\n' + lines.join('\n') + promoNote +
     '\n\nCidade: ' + (isLocal() ? city : outside) +
     '\nModalidade: ' + mode() +
     '\nSubtotal dos produtos: ' + money(subtotal) +
     '\nFrete: ' + (isLocal() ? (freight ? money(freight) : 'Grátis') : 'A confirmar pela Shopee') +
     '\n' + (isLocal() ? 'Total do pedido' : 'Total dos produtos (sem frete)') + ': ' + money(subtotal + freight) +
     '\n\nCarrinho: ' + link.href + '\n\nPode confirmar a disponibilidade e o fechamento?';
+  if (typeof gtag === 'function') gtag('event', 'conversion', {send_to: 'AW-18498510777/MD9mCKyHiJUdELm_4_RE', value: subtotal + freight, currency: 'BRL'});
   window.open('https://wa.me/5547991303031?text=' + encodeURIComponent(msg), '_blank', 'noopener');
 };
 if (typeof CONTACTS !== 'undefined' && CONTACTS.instagram) {

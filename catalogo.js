@@ -157,7 +157,7 @@ const PRODUCTS = [
       "Vanilla Daslu"
     ],
     "desc": "Home Spray + Água para Lençóis + Difusor de Varetas. O trio completo com valor especial.",
-    "localPrice": 114.9,
+    "localPrice": 119.9,
     "stock": 6
   },
   {
@@ -219,6 +219,19 @@ const PRODUCTS = [
     "desc": "Perfuma gavetas, bolsas e pequenos espaços. Não retira umidade."
   }
 ];
+// Promoção do site: kits com 10% de desconto, pedidos pelo destaque abaixo da abertura.
+// "base" lista os produtos somados para o preço cheio; o desconto é aplicado sobre essa soma.
+const PROMO_OFF = 0.10;
+for (const promo of [
+  {id: 'kitPromo', name: 'Kit TBC', size: '3 produtos', base: ['kit'], images: ['kit'],
+   desc: 'Home Spray + Água para Lençóis + Difusor de Varetas na mesma fragrância.'},
+  {id: 'duoPromo', name: 'Kit Difusor + Home Spray', size: '2 produtos', base: ['difusor', 'home'], images: ['difusor', 'home'],
+   desc: 'Difusor de Varetas + Home Spray na mesma fragrância.'}
+]) {
+  const items = promo.base.map(id => PRODUCTS.find(p => p.id === id));
+  const off = key => Math.round(items.reduce((s, p) => s + p[key], 0) * (1 - PROMO_OFF) * 100) / 100;
+  PRODUCTS.push({...promo, promo: true, image: promo.images[0], frags: items[0].frags, price: off('price'), localPrice: off('localPrice'), stock: 6});
+}
 const FREIGHT = {"Balneário Camboriú": 0, "Camboriú": 0, "Itajaí": 10, "Itapema": 15, "Brusque": 20, "Porto Belo": 20};
 // Configure o endereço confirmado da marca para ativar os acessos ao Instagram.
 const CONTACTS = { instagram: 'https://www.instagram.com/tbc.casaebemestar/' };
