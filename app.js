@@ -51,11 +51,14 @@ function setCategory(name) {
   render();
 }
 function render() {
+  // "Aprenda" troca os produtos pelos cursos e e-books da TBC.
+  const learn = filter === 'Aprenda';
+  $('coursesView').hidden = !learn; $('grid').hidden = learn; $('pricingNote').hidden = learn;
   const query = $('search').value.trim().toLocaleLowerCase('pt-BR');
   $('grid').replaceChildren();
   const display = PRODUCTS.filter(p => !p.promo && !['body100','body250'].includes(p.id))
     .filter(p => (filter === 'Todos' || category(p) === filter) && (p.name + ' ' + p.frags.join(' ')).toLocaleLowerCase('pt-BR').includes(query));
-  $('noResults').hidden = display.length > 0;
+  $('noResults').hidden = learn || display.length > 0;
   for (const base of display) {
     let p = base;
     const article = document.createElement('article'); article.className = 'card';
@@ -178,12 +181,12 @@ function renderCart() {
     : 'Outra região: fechamento pela Shopee, organizado no atendimento.';
   $('checkout').disabled = !cart.length;
 }
-for (const name of ['Todos','Ambientes','Tecidos','Corpo','Sachês','Kits']) {
-  const b = document.createElement('button'); b.textContent = name; b.className = name === filter ? 'active' : '';
+for (const name of ['Todos','Ambientes','Tecidos','Corpo','Sachês','Kits','Aprenda']) {
+  const b = document.createElement('button'); b.textContent = name; b.className = (name === filter ? 'active' : '') + (name === 'Aprenda' ? ' learnFilter' : '');
   b.setAttribute('aria-pressed', String(name === filter)); b.onclick = () => setCategory(name); $('filters').append(b);
 }
 $('city').onchange = () => {city = $('city').value; save(); render();};
-$('search').oninput = render;
+$('search').oninput = () => filter === 'Aprenda' ? setCategory('Todos') : render();
 function openCart() { renderCart(); $('cart').showModal(); }
 $('openCart').onclick = $('mobileCart').onclick = openCart;
 $('closeCart').onclick = $('continueShopping').onclick = () => {$('cart').close(); render();};
